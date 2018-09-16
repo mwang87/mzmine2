@@ -1,12 +1,12 @@
 /*
  * This module was prepared by Abi Sarvepalli, Christopher Jensen, and Zheng Zhang at the Dorrestein
  * Lab (University of California, San Diego).
- * 
+ *
  * It is freely available under the GNU GPL licence of MZmine2.
- * 
+ *
  * For any questions or concerns, please refer to:
  * https://groups.google.com/forum/#!forum/molecular_networking_bug_reports
- * 
+ *
  * Credit to the Du-Lab development team for the initial commitment to the MGF export module.
  */
 
@@ -139,8 +139,7 @@ public class GNPSExportTask extends AbstractTask {
         // Best peak always exists, because peak list row has at least one peak
         bestPeak = copyRow.getBestPeak();
 
-        // Get the MS/MS scan number
-
+        // Get the MS/MS scan number, iterates through the top peaks until an MS/MS is found
         msmsScanNumber = bestPeak.getMostIntenseFragmentScanNumber();
         while (msmsScanNumber < 1) {
           copyRow.removePeak(bestPeak.getDataFile());
@@ -152,54 +151,94 @@ public class GNPSExportTask extends AbstractTask {
         }
       }
       if (msmsScanNumber >= 1) {
-        // MS/MS scan must exist, because msmsScanNumber was > 0
-        Scan msmsScan = bestPeak.getDataFile().getScan(msmsScanNumber);
+        boolean output_MS1 = true;
+        if(output_MS1){
+            //Finding the closest MS1 scan to the MS/MS
+            int ms1ScanNumber = bestPeak.getRepresentativeScanNumber();
+            Scan ms1Scan = bestPeak.getDataFile().getScan(ms1ScanNumber);
 
-        MassList massList = msmsScan.getMassList(massListName);
+            MassList massList = ms1Scan.getMassList(massListName);
 
-        if (massList == null) {
-          MZmineCore.getDesktop().displayErrorMessage(MZmineCore.getDesktop().getMainWindow(),
-              "There is no mass list called " + massListName + " for MS/MS scan #" + msmsScanNumber
-                  + " (" + bestPeak.getDataFile() + ")");
-          return;
+            if (massList == null) {
+              MZmineCore.getDesktop().displayErrorMessage(MZmineCore.getDesktop().getMainWindow(),
+                  "There is no mass list called " + massListName + " for MS1 scan #" + ms1Scan
+                      + " (" + bestPeak.getDataFile() + ")");
+              return;
+            }
+
+            writer.write("BEGIN IONS" + newLine);
+
+            if (rowID != null)
+              writer.write("FEATURE_ID=" + rowID + newLine);
+
+            if (rowID != null) {
+              writer.write("SCANS=" + rowID + newLine);
+              writer.write("RTINSECONDS=" + retTimeInSeconds + newLine);
+            }
+
+
+            writer.write("MSLEVEL=1" + newLine);
+            writer.write("FILENAME=" + bestPeak.getDataFile().getName() + newLine);
+
+            DataPoint peaks[] = massList.getDataPoints();
+            for (DataPoint peak : peaks) {
+              writer.write(peak.getMZ() + " " + peak.getIntensity() + newLine);
+            }
+
+            writer.write("END IONS" + newLine);
+            writer.write(newLine);
         }
+        else{
+            // MS/MS scan must exist, because msmsScanNumber was > 0
+            Scan msmsScan = bestPeak.getDataFile().getScan(msmsScanNumber);
 
-        writer.write("BEGIN IONS" + newLine);
+            MassList massList = msmsScan.getMassList(massListName);
 
-        if (rowID != null)
-          writer.write("FEATURE_ID=" + rowID + newLine);
+            if (massList == null) {
+              MZmineCore.getDesktop().displayErrorMessage(MZmineCore.getDesktop().getMainWindow(),
+                  "There is no mass list called " + massListName + " for MS/MS scan #" + msmsScanNumber
+                      + " (" + bestPeak.getDataFile() + ")");
+              return;
+            }
 
-        String mass = Double.toString(Math.round(row.getAverageMZ() * 10000) / 10000.);
-        if (mass != null)
-          writer.write("PEPMASS=" + mass + newLine);
+            writer.write("BEGIN IONS" + newLine);
 
-        if (rowID != null) {
-          writer.write("SCANS=" + rowID + newLine);
-          writer.write("RTINSECONDS=" + retTimeInSeconds + newLine);
+            if (rowID != null)
+              writer.write("FEATURE_ID=" + rowID + newLine);
+
+            String mass = Double.toString(Math.round(row.getAverageMZ() * 10000) / 10000.);
+            if (mass != null)
+              writer.write("PEPMASS=" + mass + newLine);
+
+            if (rowID != null) {
+              writer.write("SCANS=" + rowID + newLine);
+              writer.write("RTINSECONDS=" + retTimeInSeconds + newLine);
+            }
+
+            int msmsCharge = msmsScan.getPrecursorCharge();
+            String msmsPolarity = msmsScan.getPolarity().asSingleChar();
+            if (msmsPolarity.equals("0"))
+              msmsPolarity = "";
+            if (msmsCharge == 0) {
+              msmsCharge = 1;
+              msmsPolarity = "";
+            }
+            writer.write("CHARGE=" + msmsCharge + msmsPolarity + newLine);
+
+            writer.write("MSLEVEL=2" + newLine);
+
+            writer.write("FILENAME=" + bestPeak.getDataFile().getName() + newLine);
+
+            DataPoint peaks[] = massList.getDataPoints();
+            for (DataPoint peak : peaks) {
+              writer.write(peak.getMZ() + " " + peak.getIntensity() + newLine);
+            }
+
+            writer.write("END IONS" + newLine);
+            writer.write(newLine);
         }
-
-        int msmsCharge = msmsScan.getPrecursorCharge();
-        String msmsPolarity = msmsScan.getPolarity().asSingleChar();
-        if (msmsPolarity.equals("0"))
-          msmsPolarity = "";
-        if (msmsCharge == 0) {
-          msmsCharge = 1;
-          msmsPolarity = "";
-        }
-        writer.write("CHARGE=" + msmsCharge + msmsPolarity + newLine);
-
-        writer.write("MSLEVEL=2" + newLine);
-
-        DataPoint peaks[] = massList.getDataPoints();
-        for (DataPoint peak : peaks) {
-          writer.write(peak.getMZ() + " " + peak.getIntensity() + newLine);
-        }
-
-        writer.write("END IONS" + newLine);
-        writer.write(newLine);
       }
     }
-
   }
 
   public String getTaskDescription() {
